@@ -1,3 +1,5 @@
+// main.js
+
 let APP_ID = "5b555d8de7a64896966b071326a386ef";
 
 let token = null;
@@ -33,6 +35,9 @@ let constraints = {
   },
   audio: true,
 };
+
+let screenSharing = false;
+let screenStream;
 
 let init = async () => {
   client = await AgoraRTM.createInstance(APP_ID);
@@ -70,6 +75,10 @@ let handleMessageFromPeer = async (message, MemberId) => {
     if (peerConnection) {
       peerConnection.addIceCandidate(message.candidate);
     }
+  }
+
+  if (message.type === "screen-share") {
+    handleScreenSharingMessage(message, MemberId);
   }
 };
 
@@ -189,9 +198,74 @@ let toggleMic = async () => {
   }
 };
 
+// Function to start screen sharing
+let startScreenSharing = async () => {
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+    });
+
+    // Replace the local video stream with the screen sharing stream
+    localStream.getVideoTracks().forEach((track) => {
+      track.stop();
+      localStream.removeTrack(track);
+    });
+
+    screenStream.getTracks().forEach((track) => {
+      localStream.addTrack(track);
+    });
+
+    // Update the video element with the new stream
+    document.getElementById("user-1").srcObject = localStream;
+
+    // Broadcast the screen sharing status to other users
+    client.sendMessageToPeer(
+      { text: JSON.stringify({ type: "screen-share", status: true }) }
+      // Replace MemberId with the appropriate recipient
+    );
+
+    screenSharing = true;
+  } catch (error) {
+    console.error("Error starting screen sharing:", error);
+  }
+};
+
+// Function to stop screen sharing
+let stopScreenSharing = () => {
+  // Restore the original local video stream
+  localStream = navigator.mediaDevices.getUserMedia(constraints);
+  document.getElementById("user-1").srcObject = localStream;
+
+  // Broadcast the screen sharing status to other users
+  client.sendMessageToPeer(
+    { text: JSON.stringify({ type: "screen-share", status: false }) }
+    // Replace MemberId with the appropriate recipient
+  );
+
+  screenSharing = false;
+};
+
+// Handle messages related to screen sharing
+let handleScreenSharingMessage = (message, MemberId) => {
+  if (message.status) {
+    // Start displaying the remote user's screen
+    document.getElementById("user-2").srcObject = remoteStream;
+  } else {
+    // Stop displaying the remote user's screen
+    document.getElementById("user-2").srcObject = null;
+  }
+};
+
 window.addEventListener("beforeunload", leaveChannel);
 
 document.getElementById("camera-btn").addEventListener("click", toggleCamera);
 document.getElementById("mic-btn").addEventListener("click", toggleMic);
+document.getElementById("screen-share-btn").addEventListener("click", () => {
+  if (screenSharing) {
+    stopScreenSharing();
+  } else {
+    startScreenSharing();
+  }
+});
 
 init();
